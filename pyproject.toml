@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools >= 64.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []
+
+[project]
+dynamic = ["version"]
+
+name = "gtmp"
+dependencies = [
+  "numpy",
+  "matplotlib",
+  "jax",
+  "joblib",
+  "chrono",
+  "jaxlie",
+  "equinox",
+  "ott-jax",
+  "hydra-core",
+  "fire",
+]
+requires-python = ">= 3.9"
+
+authors = [
+  {name = "An T. Le", email = "an.thai.le97@gmail.com"},
+]
+description = "Implementation of GTMP."
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["Path Planning", "Tensor", "URDF", "JAX", "vectorization"]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]  # list of folders that contain the packages (["."] by default)
+include = ["gtmp"]  # package names should match these glob patterns (["*"] by default)
+exclude = []  # exclude packages matching these glob patterns (empty by default)
+
+[project.urls]
+Homepage = "https://sites.google.com/view/gtmp/home"

@@ -1,0 +1,59 @@
+experiment:
+  seed: 11111
+
+num_plans: 100
+
+environment:
+  map_file: intel.npy
+  limits: [[0, 20],[0, 20]]
+  save_name: gtmp_occupancy  # .gif will be added
+  start_state: [5.5, 4.9]
+  goal_state: [15.5, 16.2]
+
+# environment:
+#   map_file: seattle.npy
+#   limits: [[0, 20],[0, 20]]
+#   save_name: gtmp_occupancy  # .gif will be added
+#   start_state: [1.1, 6.0]
+#   goal_state: [18.6, 8.5]
+
+# environment:
+#   map_file: freiburg.npy
+#   limits: [[0, 20],[0, 20]]
+#   save_name: gtmp_occupancy  # .gif will be added
+#   start_state: [0.5, 14.1]
+#   goal_state: [17.9, 7.7]
+
+# environment:
+#   map_file: orebro.npy
+#   limits: [[0, 20],[0, 20]]
+#   save_name: gtmp_occupancy  # .gif will be added
+#   start_state: [2.8, 10.]
+#   goal_state: [14.2, 18.1]
+
+# environment:
+#   map_file: mit.npy
+#   limits: [[0, 20],[0, 20]]
+#   save_name: gtmp_occupancy  # .gif will be added
+#   start_state: [0.4, 9.]
+#   goal_state: [18.85, 1.6]
+
+# environment:
+#   map_file: aces3.npy
+#   limits: [[0, 20],[0, 20]]
+#   save_name: gtmp_occupancy  # .gif will be added
+#   start_state: [2.5, 3]
+#   goal_state: [9.4, 10.1]
+
+planner:
+  name: 'akima'
+  params:
+    num_dreams: 100
+    num_layers: 2
+    num_probes: 60
+    gamma: 0.99
+    visualize_value: False
+
+hydra:
+  run:
+    dir: ../data/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}

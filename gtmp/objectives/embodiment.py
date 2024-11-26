@@ -7,7 +7,6 @@ import jax.numpy as jnp
 from jax import vmap, lax
 
 from flax import struct
-from kinax.geometries.distance import SE3_distance
 
 from gtmp.objectives.base import Field
 

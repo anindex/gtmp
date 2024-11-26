@@ -4,7 +4,7 @@ This repository implements Global Tensor Motion Planning `gtmp` and its smooth s
 
 
 <p float="middle">
-  <img src="demos/gtmp_spline_occupancy.pdf" width="32%" /> 
+  <img src="demos/gtmp_spline_occupancy.png" width="32%" /> 
 </p>
 
 
@@ -16,7 +16,15 @@ This work has been submitted to IEEE RA-L. Please find the pre-print here:
 
 ## Installation
 
-Simply activate your conda/Python environment, navigate to `gtmp` root directory and run
+Activate your conda/Python environment, clone and install `kinax`:
+
+```azure
+git clone git@github.com:anindex/kinax.git
+cd kinax
+pip install -e .
+```
+
+Then, navigate to `gtmp` root directory and install
 
 ```azure
 pip install -e .

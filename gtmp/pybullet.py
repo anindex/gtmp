@@ -13,6 +13,7 @@ from colorsys import hsv_to_rgb
 import os
 import sys
 import pybullet as pb
+from tqdm import tqdm
 from pybullet_utils.bullet_client import BulletClient
 
 
@@ -423,7 +424,7 @@ Use left/right arrow keys to move through individual states."""
 
     def animate_plans(self, plans, callback = None):
 
-        for plan in plans:
+        for plan in tqdm(plans):
             for j in plan:
                 self.set_joint_positions(j)
                 if callable(callback):

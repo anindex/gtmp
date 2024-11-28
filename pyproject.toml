@@ -11,6 +11,7 @@ dynamic = ["version"]
 name = "gtmp"
 dependencies = [
   "matplotlib",
+  "tqdm",
   "jax",
   "joblib",
   "chrono",

@@ -12,7 +12,7 @@ This repository implements Global Tensor Motion Planning `gtmp` and its smooth s
 
 This work has been submitted to IEEE RA-L. Please find the pre-print here:
 
-<!-- [<img src="https://img.shields.io/badge/arxiv-%23B31B1B.svg?&style=for-the-badge&logo=arxiv&logoColor=white" />](https://www.ias.informatik.tu-darmstadt.de/uploads/Team/AnThaiLe/mpot_preprint.pdf) -->
+[<img src="https://img.shields.io/badge/arxiv-%23B31B1B.svg?&style=for-the-badge&logo=arxiv&logoColor=white" />](https://arxiv.org/abs/2411.19393)
 
 ## Installation
 
@@ -66,10 +66,13 @@ The Motion Bench Marker dataset for Franka Emika Panda is retrieved from [vamp r
 If you found this repository useful, please consider citing these references:
 
 ```azure
-@inproceedings{le2023accelerating,
-  title={Accelerating Motion Planning via Optimal Transport},
-  author={Le, An T. and Chalvatzaki, Georgia and Biess, Armin and Peters, Jan},
-  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
-  year={2023}
+@misc{le2024globaltensormotionplanning,
+      title={Global Tensor Motion Planning}, 
+      author={An T. Le and Kay Hansel and João Carvalho and Joe Watson and Julen Urain and Armin Biess and Georgia Chalvatzaki and Jan Peters},
+      year={2024},
+      eprint={2411.19393},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2411.19393}, 
 }
 ```

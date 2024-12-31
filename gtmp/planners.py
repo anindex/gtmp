@@ -54,6 +54,26 @@ def value_iteration(Cs: jax.Array, Ch: jax.Array, Cl: jax.Array, Cg: jax.Array,
     return Vs, Vh
 
 
+@partial(jit, static_argnums=4)
+def value_iteration_finite(Cs: jax.Array, Ch: jax.Array, Cl: jax.Array, Cg: jax.Array, dtype: jnp.dtype = jnp.float32) -> jax.Array:
+    num_layer, num_dreams = Ch.shape[0] + 1, Ch.shape[1]
+    Vs = 0.
+    Vh = jnp.zeros((num_layer, num_dreams), dtype=dtype)
+
+    def optimal_bellman(i:int, V_tup: Tuple[float, float, jax.Array, jax.Array]) -> Tuple[float, float, jax.Array, jax.Array]:
+        pVs, Vs, pVh, Vh = V_tup
+        pVs, pVh = Vs, Vh
+        Vh = Vh.at[-1].set(jnp.min(Cl + Cg, axis=-1))
+        Vh = Vh.at[:num_layer - 1].set(jnp.min(Ch + Vh[1:num_layer, None, :], axis=-1))
+        Vs = jnp.min(Cs + Vh[0])
+        return pVs, Vs, pVh, Vh
+
+    V_tup = optimal_bellman(0, (Vs, Vs, Vh, Vh))
+    T = num_layer + 1
+    _, Vs, _, Vh = lax.fori_loop(1, T, optimal_bellman, V_tup)
+    return Vs, Vh
+
+
 @jit
 def get_optimal_path(Cs: jax.Array, Ch: jax.Array, Cl: jax.Array, Cg: jax.Array, Vh: jax.Array, gamma: float = 0.9) -> jax.Array:
     num_layer = Vh.shape[0]
@@ -85,6 +105,7 @@ class GTMPState():
     scale_occ: float = struct.field(default=1., pytree_node=False)
     scale_dist: float = struct.field(default=1., pytree_node=False)
     gamma: float = struct.field(default=0.99, pytree_node=False)
+    vi_finite: bool = struct.field(default=True, pytree_node=False)
     sampling_free_space: bool = struct.field(default=False, pytree_node=False)
     visualize_value: bool = struct.field(default=False, pytree_node=False)
     get_velocity: bool = struct.field(default=False, pytree_node=False)
@@ -108,6 +129,7 @@ class GTMPState():
         num_dreams: int = 50,
         num_layers: int = 5,
         num_probes: int = 10,
+        vi_finite: bool = True,
         sampling_free_space: bool = False,
         visualize_value: bool = False,
         get_velocity: bool = False,
@@ -136,6 +158,7 @@ class GTMPState():
             scale_dist=scale_dist,
             cell_size=cell_size,
             gamma=gamma,
+            vi_finite=vi_finite,
             sampling_free_space=sampling_free_space,
             visualize_value=visualize_value,
             get_velocity=get_velocity,
@@ -203,25 +226,29 @@ def gtmp_plan(key: jax.Array, state: GTMPState) -> GTMPOutput:
         del coll_layers
 
     # solve MDP
+    gamma = 1.0 if state.vi_finite else state.gamma
     if state.num_layers > 1:
-        Vs, Vh = value_iteration(Cs, Ch, Cl, Cg, state.gamma, dtype=state.dtype)
+        if state.vi_finite:
+            Vs, Vh = value_iteration_finite(Cs, Ch, Cl, Cg, dtype=state.dtype)
+        else:
+            Vs, Vh = value_iteration(Cs, Ch, Cl, Cg, gamma, dtype=state.dtype)
     else:
         Cs = jnp.squeeze(Cs)
-        Vh = jnp.min(Cl + state.gamma * Cg, axis=-1)
-        Vs = jnp.min(Cs + state.gamma * Vh)
+        Vh = jnp.min(Cl + gamma * Cg, axis=-1)
+        Vs = jnp.min(Cs + gamma * Vh)
 
     # get optimal path
     if state.num_layers > 1:
         def get_path(_):
-            mid_idx, goal_idx = get_optimal_path(Cs, Ch, Cl, Cg, Vh, state.gamma)
+            mid_idx, goal_idx = get_optimal_path(Cs, Ch, Cl, Cg, Vh, gamma)
             mid_path = dream_points[jnp.arange(state.num_layers), mid_idx, :]
             goal = state.goals[goal_idx]
             path = jnp.concatenate((q[None, ...], mid_path, goal[None, ...]), axis=0)
             return path, goal_idx
     else:
         def get_path(_):
-            mid_idx = jnp.argmin(Cs + state.gamma * Vh)
-            goal_idx = jnp.argmin(Cl[mid_idx] + state.gamma * Cg)
+            mid_idx = jnp.argmin(Cs + gamma * Vh)
+            goal_idx = jnp.argmin(Cl[mid_idx] + gamma * Cg)
             mid_point = dream_points[0, mid_idx]
             path = jnp.concatenate((q[None, ...], mid_point[None, ...], state.goals[goal_idx, None, ...]), axis=0)
             return path, goal_idx
@@ -285,25 +312,29 @@ def gtmp_akima_plan(key: jax.Array, state: GTMPState) -> GTMPOutput:
     Cg = -jnp.ones(state.goals.shape[0], dtype=state.dtype)
 
     # solve MDP
+    gamma = 1.0 if state.vi_finite else state.gamma
     if state.num_layers > 1:
-        Vs, Vh = value_iteration(Cs, Ch, Cl, Cg, state.gamma, dtype=state.dtype)
+        if state.vi_finite:
+            Vs, Vh = value_iteration_finite(Cs, Ch, Cl, Cg, dtype=state.dtype)
+        else:
+            Vs, Vh = value_iteration(Cs, Ch, Cl, Cg, gamma, dtype=state.dtype)
     else:
         Cs = jnp.squeeze(Cs)
-        Vh = jnp.min(Cl + state.gamma * Cg, axis=-1)
-        Vs = jnp.min(Cs + state.gamma * Vh)
+        Vh = jnp.min(Cl + gamma * Cg, axis=-1)
+        Vs = jnp.min(Cs + gamma * Vh)
 
     # get optimal path
     if state.num_layers > 1:
         def get_path(_):
-            mid_idx, goal_idx = get_optimal_path(Cs, Ch, Cl, Cg, Vh, state.gamma)
+            mid_idx, goal_idx = get_optimal_path(Cs, Ch, Cl, Cg, Vh, gamma)
             path_ids = jnp.append(mid_idx, goal_idx)
             path_ids = jnp.append(0, path_ids)
             path = splines.get_spline_interpolation(path_ids, num_points=state.num_probes)
             return path, path_ids, goal_idx
     else:
         def get_path(_):
-            mid_idx = jnp.argmin(Cs + state.gamma * Vh)
-            goal_idx = jnp.argmin(Cl[mid_idx] + state.gamma * Cg)
+            mid_idx = jnp.argmin(Cs + gamma * Vh)
+            goal_idx = jnp.argmin(Cl[mid_idx] + gamma * Cg)
             path_ids = jnp.array([0, mid_idx, goal_idx])
             path = splines.get_spline_interpolation(path_ids, num_points=state.num_probes)
             return path, path_ids, goal_idx

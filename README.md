@@ -53,7 +53,6 @@ Please see the `configs/` folder to select task and problem index.
 - `M`: the number of GTMP layer. In principle, we start tuning from `M = 1` since most problems are suprisingly can be solved with one layer. The minimum layer such that the problem can be solved is usually the optimal number of layer.
 - `N`: the number of points per layer, which depends on the GPU memory. The more `N` the better in term of solvability, the worse computation time.
 - `H`: the number of probing, which depends on the GPU memory. We set this moderately high depending on problem to ensure collision avoidance. 
-- `gamma = 0.9 - 0.99` is usually enough.
 
 ## Acknowledgement
 

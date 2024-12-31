@@ -51,7 +51,6 @@ planner:
     num_dreams: 100
     num_layers: 2
     num_probes: 60
-    gamma: 0.99
     visualize_value: False
 
 hydra:

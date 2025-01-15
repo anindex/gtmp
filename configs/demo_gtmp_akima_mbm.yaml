@@ -15,7 +15,6 @@ planner:
     num_dreams: 50
     num_layers: 1
     num_probes: 20
-    gamma: 0.99
     visualize_value: False
 
 

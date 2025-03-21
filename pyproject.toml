@@ -21,6 +21,7 @@ dependencies = [
   "hydra-core",
   "fire",
   "pybullet",
+  "seaborn",
   "xmltodict",
 ]
 requires-python = ">= 3.9"

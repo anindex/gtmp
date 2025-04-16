@@ -386,7 +386,7 @@ class LayerAkima1DInterpolator(LayerPPoly):
         dxr = dx.reshape([dx.shape[0]] + [1] * y.ndim)
 
         y_l, y_r = y[:-1], y[1:]
-        dydx_l, dydx_r = dydx[:-1], dydx[1:]
+        dydx_l, dydx_r = dydx[:-1] * dxr, dydx[1:] * dxr
         dydx_l = dydx_l.mean(axis=(-1, -2), keepdims=True)  # (M + 1, D, 1, 1)
         dydx_l = dydx_l.repeat(N, axis=-1).repeat(N, axis=-2)  # (M + 1, D, N, N)
         dydx_r = dydx_r.mean(axis=(-1, -2), keepdims=True)  # (M + 1, D, 1, 1)
@@ -396,9 +396,7 @@ class LayerAkima1DInterpolator(LayerPPoly):
         diff = (y_r[:, None, :, :] - y_l[:, :, None, :]) / dxr
         diff = jnp.moveaxis(diff, -1, 1)  # (M + 1, D, N, N)
         ci = 3 * diff - 2 * dydx_l - dydx_r  # (M + 1, D, N, N)
-        ci = ci / dxr
         di = -2 * diff + dydx_l + dydx_r  # (M + 1, D, N, N)
-        di = di / jnp.square(dxr)
         c = jnp.stack([di, ci, bi, ai], axis=-1)  # (M + 1, D, N, N, 4)
         # handle non-uniform spacing
         c = c / (dx[:, None, None, None, None] ** jnp.arange(4)[::-1])

@@ -162,3 +162,12 @@ cython_debug/
 #.idea/
 
 .vscode/
+
+# Hydra outputs (experimental results and logs)
+# Keep configs/ for running, ignore data/outputs/ runtime results
+data/outputs/*.run
+*.run.*
+data/outputs/
+*.run
+*.run.*
+data/outputs/

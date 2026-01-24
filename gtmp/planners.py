@@ -6,7 +6,7 @@ from typing import Tuple, Optional, Union, Any, List, Dict
 from functools import partial
 
 from gtmp.splines import LayerAkima1DInterpolator
-
+from gtmp.dubins_splines import DubinsParams,dubins_path_planning,PathCandidate
 
 @partial(jit, static_argnums=1)
 def interpolate_path(path: jax.Array, num_points: int) -> jax.Array:
@@ -88,18 +88,25 @@ def get_optimal_path(Cs: jax.Array, Ch: jax.Array, Cl: jax.Array, Cg: jax.Array,
 
 @struct.dataclass
 class GTMPState():
-    dim: int = 2
+    # dim static
+    dim: int = struct.field(default=2, pytree_node=False) 
+    
     q: jax.Array = None
-    bounds: jax.Array = struct.field(default=None, pytree_node=False)  # (dim, 2)
+    bounds: jax.Array = struct.field(default=None, pytree_node=False)
     goals: jax.Array = None  # (num_goals, dim)
-    time_profile: jax.Array = None  # (num_layers + 2)
+    # time_profile static
+    time_profile: jax.Array = struct.field(default=None, pytree_node=False)
+    
     splines: LayerAkima1DInterpolator = struct.field(default=None, pytree_node=False)
 
     num_dreams: int = struct.field(default=50, pytree_node=False)
     num_layers: int = struct.field(default=5, pytree_node=False)
     num_probes: int = struct.field(default=10, pytree_node=False)
     probes: jax.Array = struct.field(default=None, pytree_node=False)
-    occ_map: Any = None
+    
+    # occ_map static
+    occ_map: Any = struct.field(default=None, pytree_node=False) 
+    
     cell_size: float = struct.field(default=1., pytree_node=False)
     scale_objective: float = struct.field(default=1., pytree_node=False)
     scale_occ: float = struct.field(default=1., pytree_node=False)
@@ -264,6 +271,114 @@ def gtmp_plan(key: jax.Array, state: GTMPState) -> GTMPOutput:
     if state.visualize_value:
         output = output.replace(dream_points=dream_points, V=Vh)
     return output
+
+def gtmp_dubins_plan(key: jax.Array, state: GTMPState, dubins_params: DubinsParams) -> GTMPOutput:
+    q = state.q  # Shape: (3,) -> [x, y, theta]
+    
+    # 1. Sample 3D subgoal points [x, y, theta]
+    # The bounds here must be (3, 2)
+    dream_points = sample_dream_points(key, state.bounds, (state.num_layers, state.num_dreams), dtype=state.dtype)
+
+    # 2. Define batch planning helper function with automatic collision computation (key for memory optimization)
+    def compute_segment_cost(start_node, end_node):
+        # Generate Dubins path (Path shape: [MAX_POINTS, 3])
+        path, info = dubins_path_planning(start_node, end_node, dubins_params)
+        # Strip angle dimension for collision detection [MAX_POINTS, 2]
+        coll = state.occ_map(path[..., :2]).mean()
+        return path, info.cost, coll
+
+    # Wrap batch processing functions
+    # batch_func: process (N,) target points
+    batch_func = vmap(compute_segment_cost, in_axes=(None, 0))
+    # pair_func: process (N, N) paired points
+    pair_func = vmap(batch_func, in_axes=(0, None))
+
+    # 3. Compute paths, distances and collisions for each segment
+    # --- Start -> First layer ---
+    # points_s_1: (N, P, 3), dist_s_1: (N,), coll_s_1: (N,)
+    points_s_1, dist_s_1, coll_s_1 = batch_func(q, dream_points[0])
+
+    # --- Inter-layer segments ---
+    if state.num_layers > 1:
+        # Use vmap to process L-1 inter-layer connections
+        # Returns dimensions with one additional layer [L-1, N, N, ...]
+        _, dist_layers, coll_layers = vmap(pair_func, in_axes=(0, 0))(dream_points[:-1], dream_points[1:])
+
+    # --- Last layer -> Goal points ---
+    # points_final_g: (N, G, P, 3), dist_final_g: (N, G), coll_last_g: (N, G)
+    points_final_g, dist_final_g, coll_last_g = pair_func(dream_points[-1], state.goals)
+
+    # Note: All del statements removed - del is ineffective in JIT-compiled JAX functions
+    # JAX uses functional programming and automatically manages memory. del statements interfere with compiler optimization.
+    
+    scale_occ = state.scale_occ
+    scale_dist = state.scale_dist
+    Cs = scale_dist * dist_s_1 + scale_occ * coll_s_1
+    if state.num_layers > 1:
+        Ch = scale_dist * dist_layers + scale_occ * coll_layers
+    Cl = scale_dist * dist_final_g + scale_occ * coll_last_g
+    Cg = -jnp.ones(state.goals.shape[0], dtype=state.dtype)
+
+    # solve MDP
+    gamma = 1.0 if state.vi_finite else state.gamma
+    if state.num_layers > 1:
+        if state.vi_finite:
+            Vs, Vh = value_iteration_finite(Cs, Ch, Cl, Cg, dtype=state.dtype)
+        else:
+            Vs, Vh = value_iteration(Cs, Ch, Cl, Cg, gamma, dtype=state.dtype)
+    else:
+        Cs = jnp.squeeze(Cs)
+        Vh = jnp.min(Cl + gamma * Cg, axis=-1)
+        Vs = jnp.min(Cs + gamma * Vh)
+
+    # get optimal path
+    def get_path(_):
+        # 1. Find optimal node indices
+        if state.num_layers > 1:
+            mid_idx, goal_idx = get_optimal_path(Cs, Ch, Cl, Cg, Vh, gamma)
+        else:
+            mid_idx = jnp.argmin(Cs + gamma * Vh)
+            goal_idx = jnp.argmin(Cl[mid_idx] + gamma * Cg)
+
+        # 2. Collect key pose nodes [Start, Mid1, Mid2..., Goal]
+        mid_poses = dream_points[jnp.arange(state.num_layers), mid_idx, :]
+        goal_pose = state.goals[goal_idx]
+        all_nodes = jnp.concatenate([q[None, :], mid_poses, goal_pose[None, :]], axis=0)
+
+        # 3. Regenerate and concatenate optimal Dubins curves
+        # Use vmap to process (L+1) segment planning
+        def plan_segment(i):
+            p, _ = dubins_path_planning(all_nodes[i], all_nodes[i+1], dubins_params)
+            return p
+        
+        # Get (L+1, MAX_POINTS, 3)
+        segments = vmap(plan_segment)(jnp.arange(state.num_layers + 1))
+        
+        # Flatten and concatenate into continuous trajectory (Total_Points, 3)
+        full_path = segments.reshape(-1, 2)
+        return full_path, goal_idx
+    
+    collision = jnp.isinf(Vs)
+    total_pts = (state.num_layers + 1) * state.num_probes
+    
+    path, goal_idx = lax.cond(
+        collision, 
+        lambda _: (jnp.zeros((total_pts, q.shape[-1]-1), state.dtype), 0), 
+        get_path, 
+        None
+    )
+
+    # return distance to the subgoal
+    output = GTMPOutput(
+        path=path,
+        goal_idx=goal_idx,
+        collision=collision,
+    )
+    if state.visualize_value:
+        output = output.replace(dream_points=dream_points, V=Vh)
+    return output
+
+
 
 
 def gtmp_akima_plan(key: jax.Array, state: GTMPState) -> GTMPOutput:

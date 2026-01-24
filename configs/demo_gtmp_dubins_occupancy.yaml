@@ -1,0 +1,70 @@
+experiment:
+  seed: 11111
+
+num_plans: 1
+
+# Execution mode: 'batch', 'scan', 'vmap'
+# - 'batch': batch parallel
+# - 'scan': lax.scan sequential
+# - 'vmap': radical parallel
+execution_mode: vmap
+
+batch_size: 10 # only execution_mode='batch' 
+
+environment:
+  map_file: freiburg.npy
+  limits: [[0, 20],[0, 20],[0,360]]
+  save_name: gtmp_occupancy_sequential  # save name
+  sequential_points:  
+    - [4.21,6.13] 
+    - [7.70,10.33]
+    - [12.45,5.71]
+    - [14.48,17.70]
+    - [10.1,14.45]
+#environment:
+#  map_file: seattle.npy
+#  limits: [[0, 20],[0, 20]]
+#  save_name: gtmp_occupancy  # .gif will be added
+#  start_state: [10.4, 17.67]
+#  goal_state: [2.77, 4.50]
+
+# environment:
+#   map_file: freiburg.npy
+#   limits: [[0, 20],[0, 20]]
+#   save_name: gtmp_occupancy  # .gif will be added
+#   start_state: [0.5, 14.1]
+#   goal_state: [17.9, 7.7]
+
+#environment:
+#  map_file: orebro.npy
+#  limits: [[0, 20],[0, 20]]
+#  save_name: gtmp_occupancy  # .gif will be added
+#  start_state: [2.8, 10.]
+#  goal_state: [14.2, 18.1]
+
+#environment:
+#  map_file: mit.npy
+#  limits: [[0, 20],[0, 20]]
+#  save_name: gtmp_occupancy  # .gif will be added
+#  start_state: [0.4, 9.]
+#  goal_state: [18.85, 1.6]
+
+# environment:
+#   map_file: aces3.npy
+#   limits: [[0, 20],[0, 20]]
+#   save_name: gtmp_occupancy  # .gif will be added
+#   start_state: [2.5, 3]
+#   goal_state: [9.4, 10.1]
+
+planner:
+  min_radius: 0.4
+  name: 'dubins'
+  params:
+    num_dreams: 50
+    num_layers: 2
+    num_probes: 100
+    visualize_value: False
+
+hydra:
+  run:
+    dir: ../data/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -1,15 +1,20 @@
 experiment:
   seed: 11111
 
-num_plans: 100
+num_plans: 1
 
 environment:
   map_file: intel.npy
   limits: [[0, 20],[0, 20]]
-  save_name: gtmp_occupancy  # .gif will be added
-  start_state: [5.5, 4.9]
-  goal_state: [15.5, 16.2]
-
+  save_name: gtmp_occupancy_sequential  # save name
+  sequential_points: 
+    - [4.45, 15.17]    
+    - [4.25, 6.85]  
+    - [9.15, 4.38]   
+    - [15.44, 4.97]
+    - [15.10, 11.19]
+    - [15.62, 16.49]
+    - [10.20, 17.17] 
 # environment:
 #   map_file: seattle.npy
 #   limits: [[0, 20],[0, 20]]
@@ -48,10 +53,11 @@ environment:
 planner:
   name: 'straight'
   params:
-    num_dreams: 100
+    num_dreams: 50
     num_layers: 2
     num_probes: 100
     visualize_value: False
+
 
 hydra:
   run:

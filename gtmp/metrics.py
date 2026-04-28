@@ -1,28 +1,58 @@
+"""Path quality metrics for GTMP evaluation.
+
+Includes path diversity (via OTT-JAX Sinkhorn), cosine similarity,
+and composite metric computation.
+"""
+from typing import List
+
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import vmap, random, jit, lax
-from typing import Tuple, Optional, Union, Any, List, Dict
+from jax import vmap, jit
 
-import ott
 from ott.geometry import pointcloud
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
 
 
-# @jit
 def entropy_path(paths: jax.Array) -> jax.Array:
-    frechet_matrix = jnp.linalg.norm(paths[:, None, :, :] - paths[None, :, :, :], axis=-1).sum(axis=-1)
-    # normalize
+    """Compute entropy of pairwise Fréchet distance matrix.
+
+    Parameters
+    ----------
+    paths : jax.Array, shape (num_paths, num_points, dim)
+        Collection of paths.
+
+    Returns
+    -------
+    jax.Array
+        Entropy value.
+    """
+    frechet_matrix = jnp.linalg.norm(
+        paths[:, None, :, :] - paths[None, :, :, :], axis=-1
+    ).sum(axis=-1)
     frechet_matrix = frechet_matrix / frechet_matrix.sum()
-    # compute entropy
-    entropy = -jnp.sum(frechet_matrix * jnp.log(frechet_matrix + 1e-12))
-    return entropy
+    return -jnp.sum(frechet_matrix * jnp.log(frechet_matrix + 1e-12))
 
 
-# @jit
-def solve_ott(x: jax.Array, y: jax.Array, eps: float = 5e-2, threshold: float = 1e-3) -> jax.Array:
-    n, m = x.shape[0], y.shape[0]
+def solve_ott(
+    x: jax.Array, y: jax.Array, eps: float = 5e-2, threshold: float = 1e-3
+) -> jax.Array:
+    """Solve optimal transport between two point clouds using Sinkhorn.
+
+    Parameters
+    ----------
+    x, y : jax.Array
+        Point clouds.
+    eps : float
+        Entropic regularization.
+    threshold : float
+        Convergence threshold.
+
+    Returns
+    -------
+    tuple of (f, g, primal_cost, n_iters)
+    """
     geom = pointcloud.PointCloud(x, y, epsilon=eps)
     prob = linear_problem.LinearProblem(geom)
     solver = sinkhorn.Sinkhorn(
@@ -32,82 +62,130 @@ def solve_ott(x: jax.Array, y: jax.Array, eps: float = 5e-2, threshold: float = 
         lse_mode=True,
     )
     out = solver(prob)
-    # # center dual variables to facilitate comparison
-    f, g = out.f, out.g
-    # f, g = f - jnp.mean(f), g + jnp.mean(f)
-    # a, b = jnp.ones(n) / n, jnp.ones(m) / m
-    # reg_ot = jnp.sum(f * a) + jnp.sum(g * b)
-    return f, g, out.primal_cost, out.n_iters
+    return out.f, out.g, out.primal_cost, out.n_iters
 
 
-# @jit
 def path_diversity(paths: jax.Array) -> jax.Array:
+    """Compute average pairwise OT distance between paths.
+
+    Parameters
+    ----------
+    paths : jax.Array, shape (num_paths, num_points, dim)
+
+    Returns
+    -------
+    jax.Array
+        Mean pairwise Sinkhorn distance.
+    """
     num_paths = paths.shape[0]
     path_a, path_b = jnp.triu_indices(num_paths, 1)
-    
+
     def path_dist(paths, id1, id2):
         _, _, reg_ot, _ = solve_ott(paths[id1], paths[id2])
         return reg_ot
-    
+
     dists = vmap(path_dist, in_axes=(None, 0, 0))(paths, path_a, path_b)
     return dists.mean()
 
 
 def path_diversity_np(paths: List[np.ndarray]) -> float:
+    """Compute path diversity using numpy paths (non-JIT).
+
+    Parameters
+    ----------
+    paths : list of np.ndarray
+
+    Returns
+    -------
+    float
+        Mean pairwise Sinkhorn distance.
+    """
     num_paths = len(paths)
-    
-    def path_dist(path1, path2):
-        _, _, reg_ot, _ = solve_ott(path1, path2)
-        return reg_ot
-    
     dists = []
+
     for i in range(num_paths):
-        for j in range(i, num_paths):
-            dists.append(path_dist(paths[i], paths[j]))
-    dists = np.asarray(dists)
-    return dists.mean()
+        for j in range(i + 1, num_paths):
+            _, _, reg_ot, _ = solve_ott(paths[i], paths[j])
+            dists.append(reg_ot)
+    if not dists:
+        return 0.0
+    return float(np.mean(np.asarray(dists)))
 
 
-# @jit
+def _compute_cosine_similarity(paths: jax.Array) -> jax.Array:
+    """Compute per-segment cosine similarity for a batch of paths.
+
+    Parameters
+    ----------
+    paths : jax.Array, shape (..., num_points, dim)
+
+    Returns
+    -------
+    jax.Array, shape (..., num_segments-1)
+        Cosine similarity between consecutive segments.
+    """
+    path_vecs = jnp.diff(paths, axis=-2)
+    v1, v2 = path_vecs[..., :-1, :], path_vecs[..., 1:, :]
+    v1_norm = jnp.linalg.norm(v1, axis=-1)
+    v2_norm = jnp.linalg.norm(v2, axis=-1)
+    # Guard against zero-length segments
+    safe_v1_norm = jnp.maximum(v1_norm, 1e-12)
+    safe_v2_norm = jnp.maximum(v2_norm, 1e-12)
+    nv1 = v1 / safe_v1_norm[..., None]
+    nv2 = v2 / safe_v2_norm[..., None]
+    return jnp.einsum("...i,...i->...", nv1, nv2)
+
+
 def min_cosin_sim(paths: jax.Array) -> jax.Array:
-    path_vecs =  jnp.diff(paths, axis=-2)
-    v1, v2 = path_vecs[..., :-1, :], path_vecs[..., 1:, :]
-    v1_norm, v2_norm = jnp.linalg.norm(v1, axis=-1), jnp.linalg.norm(v2, axis=-1)
-    nv1, nv2 = v1 / v1_norm[..., None], v2 / v2_norm[..., None]
-    cosin_sim = jnp.einsum('...i,...i->...', nv1, nv2).min(axis=-1)
-    return cosin_sim.mean()
+    """Compute mean of minimum cosine similarities across paths."""
+    return _compute_cosine_similarity(paths).min(axis=-1).mean()
 
 
-# @jit
 def mean_cosin_sim(paths: jax.Array) -> jax.Array:
-    path_vecs =  jnp.diff(paths, axis=-2)
-    v1, v2 = path_vecs[..., :-1, :], path_vecs[..., 1:, :]
-    v1_norm, v2_norm = jnp.linalg.norm(v1, axis=-1), jnp.linalg.norm(v2, axis=-1)
-    nv1, nv2 = v1 / v1_norm[..., None], v2 / v2_norm[..., None]
-    cosin_sim = jnp.einsum('...i,...i->...', nv1, nv2).mean(axis=-1)
-    return cosin_sim.mean()
+    """Compute mean of average cosine similarities across paths."""
+    return _compute_cosine_similarity(paths).mean(axis=-1).mean()
 
 
 def min_cosin_sim_np(paths: List[np.ndarray]) -> float:
-    num_paths = len(paths)
-    path_vecs =  [np.diff(p, axis=-2) for p in paths]
-    v1, v2 = [p[..., :-1, :] for p in path_vecs], [p[..., 1:, :] for p in path_vecs]
-    nv1, nv2 = [v / np.linalg.norm(v, axis=-1)[..., None] for v in v1], [v / np.linalg.norm(v, axis=-1)[..., None] for v in v2]
-    cosin_sim = [np.einsum('...i,...i->...', nv1[i], nv2[i]).min() for i in range(num_paths)]
-    return np.mean(cosin_sim)
+    """Compute min cosine similarity for list of numpy paths."""
+    cosines = []
+    for p in paths:
+        vecs = np.diff(p, axis=-2)
+        v1, v2 = vecs[..., :-1, :], vecs[..., 1:, :]
+        n1 = np.maximum(np.linalg.norm(v1, axis=-1), 1e-12)
+        n2 = np.maximum(np.linalg.norm(v2, axis=-1), 1e-12)
+        nv1 = v1 / n1[..., None]
+        nv2 = v2 / n2[..., None]
+        cosines.append(np.einsum("...i,...i->...", nv1, nv2).min())
+    return float(np.mean(cosines))
 
 
 def mean_cosin_sim_np(paths: List[np.ndarray]) -> float:
-    num_paths = len(paths)
-    path_vecs =  [np.diff(p, axis=-2) for p in paths]
-    v1, v2 = [p[..., :-1, :] for p in path_vecs], [p[..., 1:, :] for p in path_vecs]
-    nv1, nv2 = [v / np.linalg.norm(v, axis=-1)[..., None] for v in v1], [v / np.linalg.norm(v, axis=-1)[..., None] for v in v2]
-    cosin_sim = [np.einsum('...i,...i->...', nv1[i], nv2[i]).mean() for i in range(num_paths)]
-    return np.mean(cosin_sim)
+    """Compute mean cosine similarity for list of numpy paths."""
+    cosines = []
+    for p in paths:
+        vecs = np.diff(p, axis=-2)
+        v1, v2 = vecs[..., :-1, :], vecs[..., 1:, :]
+        n1 = np.maximum(np.linalg.norm(v1, axis=-1), 1e-12)
+        n2 = np.maximum(np.linalg.norm(v2, axis=-1), 1e-12)
+        nv1 = v1 / n1[..., None]
+        nv2 = v2 / n2[..., None]
+        cosines.append(np.einsum("...i,...i->...", nv1, nv2).mean())
+    return float(np.mean(cosines))
 
 
 def compute_metrics(data) -> List[float]:
-    # path cost
+    """Compute comprehensive planning quality metrics.
+
+    Parameters
+    ----------
+    data : GTMPOutput
+        Planning output with path and collision fields.
+
+    Returns
+    -------
+    list of [collision_free_rate, path_cost, diversity, min_cosine, mean_cosine]
+    """
     paths = data.path
     collision_free = 1 - data.collision.mean()
     free_paths = paths[~data.collision]

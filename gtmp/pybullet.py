@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 from zlib import crc32
 from colorsys import hsv_to_rgb
 import os
-import sys
+
 import pybullet as pb
 from tqdm import tqdm
 from pybullet_utils.bullet_client import BulletClient
@@ -36,7 +36,7 @@ class RedirectStream:
             streamname = stream.name[1:-1]
             libc = ctypes.CDLL(None)
             libc.fflush(ctypes.c_void_p.in_dll(libc, streamname))
-        except:
+        except Exception:
             ...
 
     def __init__(self, stream = sys.stdout, file = os.devnull):
@@ -191,7 +191,7 @@ class PyBulletSimulator:
                     textColorRGB = [0., 0., 0.],
                     )
 
-                return multibody_id
+            return multibody_id
 
     def add_cylinder(
         self,
@@ -227,7 +227,7 @@ class PyBulletSimulator:
                     textColorRGB = [0., 0., 0.],
                     )
 
-                return multibody_id
+            return multibody_id
 
     def add_cuboid(
         self,
@@ -260,7 +260,7 @@ class PyBulletSimulator:
                     textColorRGB = [0., 0., 0.],
                     )
 
-                return multibody_id
+            return multibody_id
 
     def add_sphere(
         self,

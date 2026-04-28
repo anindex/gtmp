@@ -1,3 +1,7 @@
+"""Visualize Akima spline interpolation across layers."""
+import os
+os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
 import numpy as np
 import jax.numpy as jnp
 from jax import vmap, random, jit, lax
